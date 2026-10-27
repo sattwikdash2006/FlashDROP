@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FlashDrop - Direct P2P File Transfer (Up to 10GB)</title>
+  <meta name="description" content="Secure, serverless peer-to-peer file transfer directly between devices with WebRTC. Zero storage, zero limits." />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+            },
+            surface: {
+              900: '#0b0f19',
+              800: '#111827',
+              700: '#1f2937',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts & FontAwesome -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <!-- QRCode.js & Canvas Confetti -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-[#080b11] text-gray-100 min-h-screen flex flex-col justify-between antialiased selection:bg-brand-500 selection:text-white">
+
+  <!-- Ambient Glow Background -->
+  <div class="fixed inset-0 pointer-events-none overflow-hidden z-0">
+    <div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-brand-600/15 blur-[140px] rounded-full"></div>
+    <div class="absolute -bottom-40 right-10 w-[500px] h-[300px] bg-emerald-600/10 blur-[130px] rounded-full"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="relative z-10 border-b border-white/5 backdrop-blur-xl bg-[#080b11]/70 sticky top-0 px-6 py-4">
+    <div class="max-w-6xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400 flex items-center justify-center shadow-lg shadow-brand-500/20">
+          <i class="fa-solid fa-bolt-lightning text-white text-lg"></i>
+        </div>
+        <div>
+          <span class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent">FlashDrop</span>
+          <span class="text-xs uppercase tracking-wider text-brand-400 font-semibold ml-1.5 px-2 py-0.5 rounded-full bg-brand-500/10 border border-brand-500/20">Direct Share</span>
+        </div>
+      </div>
+
+      <!-- Connection Status Badge -->
+      <div class="flex items-center gap-4">
+        <div id="statusBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border border-white/10 bg-white/5 backdrop-blur-md">
+          <span id="statusDot" class="w-2 h-2 rounded-full bg-gray-500"></span>
+          <span id="statusText" class="text-gray-300">Disconnected</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="relative z-10 flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 flex flex-col justify-center">
+
+    <!-- Privacy Badge -->
+    <div class="flex justify-center mb-6">
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs font-medium shadow-inner">
+        <i class="fa-solid fa-shield-halved text-emerald-400"></i>
+        <span>End-to-End Encrypted & Local — No Server Storage</span>
+      </div>
+    </div>
+
+    <!-- Panel 1: Connect / Pairing Form -->
+    <section id="connectPanel" class="glass-card rounded-2xl p-6 sm:p-8 transition-all duration-300">
+      <div class="text-center max-w-lg mx-auto mb-8">
+        <h1 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Direct Peer-to-Peer Transfer</h1>
+        <p class="text-sm text-gray-400 mt-2">Transfer high-res photos, 4K videos, and files up to 10GB straight from device to device using your mobile numbers.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-2xl mx-auto">
+        <!-- Sender Phone -->
+        <div class="space-y-2">
+          <label class="block text-xs font-semibold uppercase tracking-wider text-gray-400">Your Mobile Number</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-500">
+              <i class="fa-solid fa-mobile-screen-button"></i>
+            </span>
+            <input type="tel" id="myPhoneInput" placeholder="+1 555 019 2834"
+              class="w-full pl-10 pr-4 py-3 bg-surface-900/80 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition text-sm" />
+          </div>
+          <p class="text-[11px] text-gray-500">Used for direct signaling. Hashed client-side.</p>
+        </div>
+
+        <!-- Receiver Phone -->
+        <div class="space-y-2">
+          <label class="block text-xs font-semibold uppercase tracking-wider text-gray-400">Receiver's Mobile Number</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-500">
+              <i class="fa-solid fa-user-check"></i>
+            </span>
+            <input type="tel" id="targetPhoneInput" placeholder="+1 555 014 9921"
+              class="w-full pl-10 pr-4 py-3 bg-surface-900/80 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition text-sm" />
+          </div>
+          <p class="text-[11px] text-gray-500">Must match the number entered on their device.</p>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 max-w-md mx-auto">
+        <button id="btnConnect" class="w-full sm:w-auto flex-1 py-3 px-6 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-brand-600/30 active:scale-[0.98] transition flex items-center justify-center gap-2">
+          <i class="fa-solid fa-bolt"></i>
+          <span>Connect & Send</span>
+        </button>
+        <button id="btnListen" class="w-full sm:w-auto flex-1 py-3 px-6 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-200 font-semibold text-sm active:scale-[0.98] transition flex items-center justify-center gap-2">
+          <i class="fa-solid fa-satellite-dish"></i>
+          <span>Wait to Receive</span>
+        </button>
+      </div>
+
+      <!-- Quick QR Code Modal / Drawer -->
+      <div id="qrContainer" class="hidden mt-8 pt-6 border-t border-white/10 flex flex-col items-center">
+        <p class="text-xs text-gray-400 mb-3">Scan with second phone to connect automatically:</p>
+        <div id="qrcode" class="p-3 bg-white rounded-xl shadow-xl"></div>
+      </div>
+    </section>
+
+    <!-- Panel 2: Transfer Interface (Hidden until connected) -->
+    <section id="transferPanel" class="hidden glass-card rounded-2xl p-6 sm:p-8 transition-all duration-300">
+      
+      <!-- Top Bar of Transfer Panel -->
+      <div class="flex flex-wrap items-center justify-between pb-6 border-b border-white/10 gap-3">
+        <div>
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-link text-emerald-400 text-sm"></i>
+            Direct P2P Link Active
+          </h2>
+          <p class="text-xs text-gray-400 mt-0.5">Channel: WebRTC SCTP DataChannel (Encrypted)</p>
+        </div>
+        <button id="btnDisconnect" class="px-3 py-1.5 rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500/10 text-xs font-semibold transition">
+          Disconnect
+        </button>
+      </div>
+
+      <!-- Dropzone (Sender) -->
+      <div id="dropzone" class="mt-6 border-2 border-dashed border-white/15 hover:border-brand-500/50 rounded-2xl p-8 sm:p-12 text-center transition bg-surface-900/40 cursor-pointer group">
+        <input type="file" id="fileInput" class="hidden" multiple />
+        <div class="w-16 h-16 mx-auto rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-brand-400 group-hover:scale-110 transition duration-300">
+          <i class="fa-solid fa-cloud-arrow-up text-2xl"></i>
+        </div>
+        <h3 class="mt-4 text-base font-semibold text-white">Drag & drop files here, or <span class="text-brand-400 underline underline-offset-4">browse</span></h3>
+        <p class="text-xs text-gray-400 mt-1.5">Supports 4K Videos, RAW photos, archives up to 10GB. Chunks stream directly to disk without bloating RAM.</p>
+      </div>
+
+      <!-- Active Transfer Progress Box -->
+      <div id="progressBox" class="hidden mt-6 p-5 rounded-xl bg-surface-900/80 border border-white/10 space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3 overflow-hidden">
+            <div class="w-9 h-9 rounded-lg bg-brand-500/20 flex items-center justify-center text-brand-400 shrink-0">
+              <i class="fa-solid fa-file-lines text-base"></i>
+            </div>
+            <div class="truncate">
+              <p id="fileNameDisplay" class="text-sm font-semibold text-white truncate">large-video.mp4</p>
+              <p id="fileSizeDisplay" class="text-xs text-gray-400">0 MB / 0 MB</p>
+            </div>
+          </div>
+          <span id="percentageBadge" class="text-xs font-bold px-2 py-1 rounded bg-brand-500/10 text-brand-400 border border-brand-500/20">0%</span>
+        </div>
+
+        <!-- Custom Progress Bar -->
+        <div class="w-full bg-surface-800 rounded-full h-2.5 overflow-hidden">
+          <div id="progressBar" class="bg-gradient-to-r from-brand-500 to-indigo-400 h-2.5 rounded-full transition-all duration-150" style="width: 0%"></div>
+        </div>
+
+        <!-- Transfer Stats (Speed, ETA, etc.) -->
+        <div class="flex items-center justify-between text-xs text-gray-400 font-mono">
+          <div class="flex items-center gap-1.5">
+            <i class="fa-solid fa-gauge-high text-gray-500"></i>
+            <span id="speedDisplay">0.0 MB/s</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <i class="fa-solid fa-hourglass-half text-gray-500"></i>
+            <span id="etaDisplay">Calculating ETA...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Received Files List -->
+      <div id="receivedSection" class="hidden mt-6">
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Received Files</h4>
+        <div id="receivedList" class="space-y-2"></div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Incoming Connection Modal -->
+  <div id="incomingModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="glass-card max-w-sm w-full rounded-2xl p-6 border border-white/15 text-center animate-bounce-short">
+      <div class="w-14 h-14 mx-auto rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center text-2xl mb-4">
+        <i class="fa-solid fa-phone-volume animate-pulse"></i>
+      </div>
+      <h3 class="text-lg font-bold text-white">Incoming Connection</h3>
+      <p class="text-sm text-gray-300 mt-1">Device with masked number <span id="callerNumberMask" class="font-mono text-brand-400 font-bold">XXXX</span> wants to share files with you.</p>
+
+      <div class="mt-6 flex items-center gap-3">
+        <button id="btnDecline" class="flex-1 py-2.5 rounded-xl border border-white/10 hover:bg-white/5 text-gray-300 text-sm font-semibold transition">
+          Decline
+        </button>
+        <button id="btnAccept" class="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold shadow-lg shadow-emerald-600/30 transition">
+          Accept & Pair
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="relative z-10 border-t border-white/5 py-4 px-6 text-center text-xs text-gray-500">
+    <p>All transfers are direct P2P. Files never touch any server or cloud storage.</p>
+  </footer>
+
+  <!-- Firebase SDK (Modular v10 via ESM) and App Logic -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>
