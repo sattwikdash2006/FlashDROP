@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>BeamP2P - Serverless WebRTC File Transfer via Mobile Handshake</title>
+  <meta name="description" content="Serverless peer-to-peer 10GB file transfer with phone number handshake, chunked WebRTC DataChannels, live speed metrics, and auto-download.">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfeff',
+              400: '#22d3ee',
+              500: '#06b6d4',
+              600: '#0891b2',
+              900: '#164e63',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    /* Security: Text selection lock (allow only in form inputs) */
+    * {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+    }
+    input, textarea {
+      -webkit-user-select: text !important;
+      -moz-user-select: text !important;
+      -ms-user-select: text !important;
+      user-select: text !important;
+    }
+    /* Smooth custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090d16;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+  </style>
+</head>
+<body class="bg-[#090d16] text-slate-100 min-h-screen font-sans selection:bg-cyan-500 selection:text-slate-900 pb-12">
+
+  <!-- Security Notification Toast -->
+  <div id="securityToast" class="fixed top-4 right-4 z-50 transform -translate-y-20 opacity-0 transition-all duration-300 bg-slate-900/95 border border-cyan-500/40 text-cyan-300 px-4 py-2.5 rounded-2xl text-xs flex items-center gap-2 shadow-2xl pointer-events-none">
+    <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+    <span id="securityToastText">Security Shield Active</span>
+  </div>
+
+  <div class="max-w-4xl mx-auto px-4 pt-6 space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-3 border-b border-slate-800">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-inner">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+            BeamP2P
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">10GB WebRTC</span>
+          </h1>
+          <p class="text-xs text-slate-400">Direct phone-to-phone encrypted file streaming with zero server storage.</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <div id="statusBadge" class="flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">
+          <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+          <span id="statusLabel">Offline</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Handshake Card -->
+    <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+        <div>
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+            Mobile Number Connection
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">Enter mobile numbers to verify peer handshake.</p>
+        </div>
+        <div id="handshakeDetails" class="hidden text-xs text-slate-400"></div>
+      </div>
+
+      <!-- Unconnected Form -->
+      <div id="connectPanel" class="mt-5 space-y-5">
+        <div class="flex rounded-2xl bg-slate-950 p-1 border border-slate-800 max-w-sm">
+          <button id="tabRegisterBtn" class="flex-1 py-1.5 text-xs font-semibold rounded-xl bg-cyan-500 text-slate-950">
+            1. My Phone
+          </button>
+          <button id="tabConnectBtn" class="flex-1 py-1.5 text-xs font-semibold rounded-xl text-slate-400 hover:text-white">
+            2. Connect Peer
+          </button>
+        </div>
+
+        <!-- Tab 1: Register -->
+        <div id="registerView" class="space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="sm:col-span-2">
+              <label class="block text-xs font-medium text-slate-300 mb-1">Your Mobile Number</label>
+              <input id="myPhoneInput" type="tel" placeholder="e.g. +1 555-0199 or 9876543210" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-sm focus:border-cyan-500 focus:outline-none font-mono">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1">4-Digit PIN</label>
+              <input id="myPinInput" type="text" maxlength="4" placeholder="1234" class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-sm text-center font-mono font-bold tracking-widest focus:border-cyan-500 focus:outline-none">
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <button id="btnInitPhone" class="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition-all shadow-lg shadow-cyan-500/20">
+              Initialize & Wait for Peer
+            </button>
+            <span id="regStatus" class="text-xs text-slate-400"></span>
+          </div>
+        </div>
+
+        <!-- Tab 2: Connect Target -->
+        <div id="connectView" class="hidden space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="sm:col-span-2">
+              <label class="block text-xs font-medium text-slate-300 mb-1">Target Mobile Number (Receiver)</label>
+              <input id="targetPhoneInput" type="tel" placeholder="Enter target phone number" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-sm focus:border-cyan-500 focus:outline-none font-mono">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1">Target PIN</label>
+              <input id="targetPinInput" type="text" maxlength="4" placeholder="PIN" class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-sm text-center font-mono font-bold tracking-widest focus:border-cyan-500 focus:outline-none">
+            </div>
+          </div>
+          <button id="btnConnectPeer" class="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition-all shadow-lg shadow-cyan-500/20">
+            Verify Handshake & Connect
+          </button>
+        </div>
+      </div>
+
+      <!-- Connected Banner -->
+      <div id="connectedBanner" class="hidden mt-4 p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+          </div>
+          <div>
+            <h4 class="text-sm font-bold text-white">Handshake Verified & Connected</h4>
+            <p id="connectedPeerDesc" class="text-xs text-slate-300"></p>
+          </div>
+        </div>
+        <button id="btnDisconnect" class="px-3 py-1.5 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 text-xs hover:bg-red-500/20">
+          Disconnect
+        </button>
+      </div>
+    </div>
+
+    <!-- Drop Zone -->
+    <div id="dropZone" class="bg-slate-900/80 border-2 border-dashed border-slate-700 rounded-3xl p-8 text-center cursor-pointer transition-all hover:border-cyan-500">
+      <input type="file" id="filePicker" multiple class="hidden">
+      <div class="w-16 h-16 mx-auto mb-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+      </div>
+      <h3 class="text-base font-bold text-white">Drop files or photos here to transfer (up to 10GB)</h3>
+      <p class="text-xs text-slate-400 mt-1">Chunked WebRTC DataChannel streaming directly peer-to-peer.</p>
+      <button type="button" class="mt-4 px-4 py-2 rounded-xl bg-slate-800 text-cyan-300 text-xs font-semibold border border-cyan-500/30">
+        Browse Files from Device
+      </button>
+    </div>
+
+    <!-- Active Transfers & Auto-Download Log -->
+    <div id="transferContainer" class="hidden bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">
+      <h3 class="text-sm font-bold text-white">Live Transfers & Downloads</h3>
+      <div id="transferItems" class="space-y-3"></div>
+    </div>
+
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. SOURCE PROTECTION & ANTI-INSPECT GUARDS
+    // ==========================================
+    const toast = document.getElementById('securityToast');
+    const toastText = document.getElementById('securityToastText');
+    function showSecurityToast(msg) {
+      toastText.textContent = msg;
+      toast.classList.remove('-translate-y-20', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+      setTimeout(() => {
+        toast.classList.add('-translate-y-20', 'opacity-0');
+        toast.classList.remove('translate-y-0', 'opacity-100');
+      }, 2500);
+    }
+
+    // Disable Right-Click Context Menu
+    document.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showSecurityToast('Security Guard: Right-click is disabled to protect source code.');
+      return false;
+    });
+
+    // Disable F12, Ctrl+Shift+I/J/C, Ctrl+U, Ctrl+S
+    window.addEventListener('keydown', (e) => {
+      const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+      const isShift = e.shiftKey;
+      const key = e.key.toUpperCase();
+
+      if (e.key === 'F12' || (isCtrlOrMeta && isShift && ['I', 'J', 'C'].includes(key)) || (isCtrlOrMeta && key === 'U')) {
+        e.preventDefault();
+        e.stopPropagation();
+        showSecurityToast('Developer inspection tools (F12/Inspect) are disabled.');
+        return false;
+      }
+      if (isCtrlOrMeta && key === 'S') {
+        e.preventDefault();
+        return false;
+      }
+    });
+
+    // ==========================================
+    // 2. WEBRTC P2P CHUNKED ENGINE (UP TO 10GB)
+    // ==========================================
+    const CHUNK_SIZE = 64 * 1024; // 64 KB SCTP chunk
+    const BUFFER_LIMIT = 1024 * 1024; // 1 MB backpressure limit
+
+    let peer = null;
+    let connection = null;
+    let myPhoneNumber = '';
+    let mySecretPin = '';
+    const incomingFiles = new Map();
+
+    function cleanPhone(num) {
+      return (num || '').replace(/\D/g, '');
+    }
+
+    function derivePin(phone) {
+      const d = cleanPhone(phone);
+      if (d.length >= 4) return d.slice(-4);
+      return '1234';
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const s = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return (bytes / Math.pow(k, i)).toFixed(2) + ' ' + s[i];
+    }
+
+    function updateStatus(status, label) {
+      const dot = document.getElementById('statusDot');
+      const text = document.getElementById('statusLabel');
+      text.textContent = label;
+      dot.className = 'w-2.5 h-2.5 rounded-full';
+      if (status === 'connected') {
+        dot.classList.add('bg-emerald-400', 'shadow-[0_0_8px_#34d399]');
+      } else if (status === 'waiting') {
+        dot.classList.add('bg-amber-400');
+      } else if (status === 'connecting') {
+        dot.classList.add('bg-indigo-400', 'animate-pulse');
+      } else {
+        dot.classList.add('bg-slate-500');
+      }
+    }
+
+    // Tab switcher
+    const tabRegisterBtn = document.getElementById('tabRegisterBtn');
+    const tabConnectBtn = document.getElementById('tabConnectBtn');
+    const registerView = document.getElementById('registerView');
+    const connectView = document.getElementById('connectView');
+
+    tabRegisterBtn.onclick = () => {
+      tabRegisterBtn.className = 'flex-1 py-1.5 text-xs font-semibold rounded-xl bg-cyan-500 text-slate-950';
+      tabConnectBtn.className = 'flex-1 py-1.5 text-xs font-semibold rounded-xl text-slate-400 hover:text-white';
+      registerView.classList.remove('hidden');
+      connectView.classList.add('hidden');
+    };
+
+    tabConnectBtn.onclick = () => {
+      tabConnectBtn.className = 'flex-1 py-1.5 text-xs font-semibold rounded-xl bg-cyan-500 text-slate-950';
+      tabRegisterBtn.className = 'flex-1 py-1.5 text-xs font-semibold rounded-xl text-slate-400 hover:text-white';
+      connectView.classList.remove('hidden');
+      registerView.classList.add('hidden');
+    };
+
+    // Auto PIN on phone input
+    const myPhoneInput = document.getElementById('myPhoneInput');
+    const myPinInput = document.getElementById('myPinInput');
+    myPhoneInput.oninput = () => {
+      myPinInput.value = derivePin(myPhoneInput.value);
+    };
+
+    // Initialize Local Phone Peer
+    document.getElementById('btnInitPhone').onclick = () => {
+      const raw = myPhoneInput.value;
+      const phone = cleanPhone(raw);
+      if (phone.length < 6) {
+        alert('Please enter a valid mobile number.');
+        return;
+      }
+      myPhoneNumber = phone;
+      mySecretPin = myPinInput.value || derivePin(phone);
+      const peerId = 'beamp2p-num-' + phone;
+
+      updateStatus('waiting', 'Registering phone...');
+      if (peer) peer.destroy();
+
+      peer = new Peer(peerId, {
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' }
+          ]
+        }
+      });
+
+      peer.on('open', (id) => {
+        updateStatus('waiting', 'Listening on ' + phone);
+        document.getElementById('regStatus').textContent = 'Ready! Waiting for peer connection.';
+      });
+
+      peer.on('connection', (conn) => {
+        setupConn(conn, false);
+      });
+
+      peer.on('error', (err) => {
+        alert('WebRTC Peer status: ' + err.message);
+        updateStatus('offline', 'Error');
+      });
+    };
+
+    // Connect to Remote Phone
+    document.getElementById('btnConnectPeer').onclick = () => {
+      const target = cleanPhone(document.getElementById('targetPhoneInput').value);
+      const pin = document.getElementById('targetPinInput').value;
+      if (!target) {
+        alert('Please enter target phone number.');
+        return;
+      }
+      if (!peer) {
+        alert('Please initialize your own mobile number in Step 1 first.');
+        return;
+      }
+      const targetPeerId = 'beamp2p-num-' + target;
+      updateStatus('connecting', 'Connecting...');
+      const conn = peer.connect(targetPeerId, { reliable: true, serialization: 'binary' });
+      setupConn(conn, true, target, pin);
+    };
+
+    function setupConn(conn, isInitiator, targetPhone, targetPin) {
+      connection = conn;
+      conn.on('open', () => {
+        if (isInitiator) {
+          conn.send(JSON.stringify({
+            type: 'HANDSHAKE_INIT',
+            senderPhone: myPhoneNumber,
+            pin: targetPin
+          }));
+        }
+      });
+
+      conn.on('data', (data) => {
+        // String JSON control
+        if (typeof data === 'string') {
+          const msg = JSON.parse(data);
+          if (msg.type === 'HANDSHAKE_INIT') {
+            if (mySecretPin && msg.pin && mySecretPin !== msg.pin) {
+              alert('Rejected: Incorrect 4-digit PIN from peer');
+              conn.close();
+              return;
+            }
+            conn.send(JSON.stringify({ type: 'HANDSHAKE_ACCEPT', senderPhone: myPhoneNumber }));
+            onConnected(msg.senderPhone);
+          } else if (msg.type === 'HANDSHAKE_ACCEPT') {
+            onConnected(msg.senderPhone);
+          } else if (msg.type === 'FILE_START') {
+            handleFileStart(msg.metadata);
+          }
+          return;
+        }
+
+        // Binary Chunk Data
+        handleBinaryChunk(data);
+      });
+
+      conn.on('close', () => {
+        updateStatus('offline', 'Disconnected');
+        document.getElementById('connectedBanner').classList.add('hidden');
+        document.getElementById('connectPanel').classList.remove('hidden');
+      });
+    }
+
+    function onConnected(peerPhone) {
+      updateStatus('connected', 'Connected');
+      document.getElementById('connectedBanner').classList.remove('hidden');
+      document.getElementById('connectPanel').classList.add('hidden');
+      document.getElementById('connectedPeerDesc').textContent = 'P2P Handshake verified with ' + peerPhone;
+    }
+
+    document.getElementById('btnDisconnect').onclick = () => {
+      if (connection) connection.close();
+      if (peer) peer.destroy();
+      location.reload();
+    };
+
+    // ==========================================
+    // 3. FILE CHUNKING & AUTO DOWNLOAD LOGIC
+    // ==========================================
+    function handleFileStart(meta) {
+      incomingFiles.set(meta.id, {
+        meta,
+        chunks: [],
+        received: 0,
+        startTime: Date.now()
+      });
+      renderTransferItem(meta.id, meta.name, meta.size, 'receive');
+    }
+
+    function handleBinaryChunk(data) {
+      let buffer = data;
+      if (data.buffer) buffer = data.buffer;
+      const view = new Uint8Array(buffer);
+      if (view.byteLength < 16) return;
+
+      let fileId = '';
+      for (let i = 0; i < 16; i++) {
+        if (view[i] === 0) break;
+        fileId += String.fromCharCode(view[i]);
+      }
+
+      const item = incomingFiles.get(fileId);
+      if (!item) return;
+
+      const chunk = buffer.slice(16);
+      item.chunks.push(chunk);
+      item.received += chunk.byteLength;
+
+      updateTransferProgress(fileId, item.received, item.meta.size, item.startTime);
+
+      // COMPLETE RECEIVE
+      if (item.received >= item.meta.size) {
+        // FIX: AUTOMATIC DOWNLOAD DIRECTLY TO BROWSER DOWNLOADS FOLDER
+        const blob = new Blob(item.chunks, { type: item.meta.type || 'application/octet-stream' });
+        const blobUrl = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = blobUrl;
+        a.download = item.meta.name;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+        }, 500);
+
+        markComplete(fileId, blobUrl);
+        incomingFiles.delete(fileId);
+      }
+    }
+
+    // Drop Zone file sender
+    const dropZone = document.getElementById('dropZone');
+    const filePicker = document.getElementById('filePicker');
+    dropZone.onclick = () => filePicker.click();
+
+    filePicker.onchange = (e) => {
+      const files = Array.from(e.target.files);
+      files.forEach(sendFile);
+    };
+
+    dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('border-cyan-400'); };
+    dropZone.ondragleave = () => { dropZone.classList.remove('border-cyan-400'); };
+    dropZone.ondrop = (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('border-cyan-400');
+      const files = Array.from(e.dataTransfer.files);
+      files.forEach(sendFile);
+    };
+
+    async function sendFile(file) {
+      if (!connection) {
+        alert('Please connect with peer first.');
+        return;
+      }
+      const fileId = Math.random().toString(36).substring(2, 10) + Date.now().toString(36).substring(2, 10);
+      const paddedId = fileId.slice(0, 16).padEnd(16, '\0');
+
+      connection.send(JSON.stringify({
+        type: 'FILE_START',
+        metadata: { id: fileId, name: file.name, size: file.size, type: file.type }
+      }));
+
+      renderTransferItem(fileId, file.name, file.size, 'send');
+
+      const dataChannel = connection.dataChannel;
+      if (dataChannel) dataChannel.bufferedAmountLowThreshold = BUFFER_LIMIT;
+
+      let offset = 0;
+      const startTime = Date.now();
+
+      while (offset < file.size) {
+        if (dataChannel && dataChannel.bufferedAmount > BUFFER_LIMIT * 2) {
+          await new Promise((r) => {
+            const h = () => { dataChannel.removeEventListener('bufferedamountlow', h); r(); };
+            dataChannel.addEventListener('bufferedamountlow', h);
+          });
+        }
+
+        const slice = file.slice(offset, offset + CHUNK_SIZE);
+        const buf = await slice.arrayBuffer();
+
+        const combined = new Uint8Array(16 + buf.byteLength);
+        for (let i = 0; i < 16; i++) combined[i] = paddedId.charCodeAt(i);
+        combined.set(new Uint8Array(buf), 16);
+
+        connection.send(combined.buffer);
+        offset += slice.size;
+
+        updateTransferProgress(fileId, offset, file.size, startTime);
+      }
+
+      markComplete(fileId);
+    }
+
+    // UI helper functions for transfers
+    function renderTransferItem(id, name, size, dir) {
+      document.getElementById('transferContainer').classList.remove('hidden');
+      const container = document.getElementById('transferItems');
+      const div = document.createElement('div');
+      div.id = 'transfer-' + id;
+      div.className = 'p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs space-y-2';
+      div.innerHTML = `
+        <div class="flex items-center justify-between">
+          <div class="font-semibold text-white truncate max-w-xs">${name} (${formatBytes(size)})</div>
+          <span id="speed-${id}" class="text-cyan-400 font-mono">0 KB/s</span>
+        </div>
+        <div class="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+          <div id="bar-${id}" class="h-full bg-cyan-400 w-0 transition-all duration-150"></div>
+        </div>
+        <div class="flex items-center justify-between text-slate-400 font-mono text-[10px]">
+          <span id="bytes-${id}">0 / ${formatBytes(size)}</span>
+          <span id="percent-${id}">0%</span>
+        </div>
+      `;
+      container.prepend(div);
+    }
+
+    function updateTransferProgress(id, current, total, start) {
+      const pct = Math.min(100, Math.floor((current / total) * 100));
+      const elapsed = Math.max(0.1, (Date.now() - start) / 1000);
+      const speed = current / elapsed;
+
+      const bar = document.getElementById('bar-' + id);
+      const speedEl = document.getElementById('speed-' + id);
+      const bytesEl = document.getElementById('bytes-' + id);
+      const pctEl = document.getElementById('percent-' + id);
+
+      if (bar) bar.style.width = pct + '%';
+      if (speedEl) speedEl.textContent = formatBytes(speed) + '/s';
+      if (bytesEl) bytesEl.textContent = formatBytes(current) + ' / ' + formatBytes(total);
+      if (pctEl) pctEl.textContent = pct + '%';
+    }
+
+    function markComplete(id, blobUrl) {
+      const speedEl = document.getElementById('speed-' + id);
+      if (speedEl) {
+        speedEl.innerHTML = '<span class="text-emerald-400 font-semibold">✓ Completed</span>';
+      }
+      if (blobUrl) {
+        const itemDiv = document.getElementById('transfer-' + id);
+        if (itemDiv) {
+          const dlBtn = document.createElement('a');
+          dlBtn.href = blobUrl;
+          dlBtn.download = '';
+          dlBtn.className = 'inline-block mt-2 px-3 py-1 bg-cyan-500/20 text-cyan-300 rounded-lg text-[11px] border border-cyan-500/30';
+          dlBtn.textContent = 'Auto-saved to Downloads (Click to Save Again)';
+          itemDiv.appendChild(dlBtn);
+        }
+      }
+    }
+  </script>
+</body>
+</html>
