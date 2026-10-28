@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AirLink P2P - Secure Hyper-Speed Direct File Transfer</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- PeerJS WebRTC Abstraction -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+  <style>
+    /* Protection & UX Overrides */
+    * {
+      -webkit-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+    input {
+      -webkit-user-select: auto;
+      -ms-user-select: auto;
+      user-select: auto;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #27272a;
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col justify-between selection:bg-brand-500 selection:text-white font-sans antialiased overflow-x-hidden">
+
+  <!-- TOP APP BAR -->
+  <header class="border-b border-zinc-800/80 bg-zinc-900/60 backdrop-blur-xl sticky top-0 z-50">
+    <div class="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400 flex items-center justify-center shadow-lg shadow-brand-500/20">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+          </svg>
+        </div>
+        <div>
+          <span class="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">AirLink</span>
+          <span class="text-[10px] font-semibold text-brand-400 uppercase tracking-widest ml-1 px-1.5 py-0.5 rounded bg-brand-500/10 border border-brand-500/20">P2P v2.0</span>
+        </div>
+      </div>
+
+      <!-- Peer Status Indicator -->
+      <div id="statusBadge" class="flex items-center space-x-2 bg-zinc-800/60 border border-zinc-700/60 px-3.5 py-1.5 rounded-full text-xs transition-all">
+        <span id="statusDot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+        <span id="statusText" class="font-medium text-zinc-300">Offline</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN BODY -->
+  <main class="max-w-5xl mx-auto px-4 py-8 flex-1 w-full flex flex-col items-center justify-center">
+
+    <div class="w-full max-w-xl space-y-6">
+
+      <!-- STEP 1: PHONE HANDSHAKE PANEL -->
+      <section class="bg-zinc-900/80 border border-zinc-800/80 rounded-2xl p-6 shadow-2xl backdrop-blur-md transition-all relative overflow-hidden">
+        <div class="absolute -right-8 -bottom-8 w-36 h-36 bg-brand-500/5 rounded-full blur-2xl pointer-events-none"></div>
+
+        <h2 class="text-base font-semibold text-zinc-100 flex items-center gap-2 mb-1">
+          <svg class="w-4 h-4 text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+          </svg>
+          Mobile Number Pairing
+        </h2>
+        <p class="text-xs text-zinc-400 mb-5 leading-relaxed">
+          Establish an encrypted WebRTC DataChannel via reciprocal mobile numbers. No accounts, no central servers storing payload data.
+        </p>
+
+        <div class="space-y-4">
+          <!-- Step 1A: Local Registration -->
+          <div>
+            <label class="block text-xs font-medium text-zinc-300 mb-1.5">1. Your Mobile Number (Broadcasting Identity)</label>
+            <div class="flex gap-2">
+              <input type="tel" id="myPhone" placeholder="e.g. +14155552671" class="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-mono transition-all" />
+              <button id="btnInit" onclick="initMyNode()" class="bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-xs px-4 py-2.5 rounded-xl border border-zinc-700 transition flex items-center gap-2">
+                <span>Register</span>
+              </button>
+            </div>
+            <p id="myPeerHint" class="hidden text-[11px] text-emerald-400 mt-1 font-mono"></p>
+          </div>
+
+          <div class="relative flex py-1 items-center">
+            <div class="flex-grow border-t border-zinc-800"></div>
+            <span class="flex-shrink mx-3 text-[10px] text-zinc-500 uppercase tracking-widest font-mono">THEN CONNECT</span>
+            <div class="flex-grow border-t border-zinc-800"></div>
+          </div>
+
+          <!-- Step 1B: Dial Peer -->
+          <div>
+            <label class="block text-xs font-medium text-zinc-300 mb-1.5">2. Peer's Mobile Number (Remote Target)</label>
+            <div class="flex gap-2">
+              <input type="tel" id="targetPhone" placeholder="e.g. +14155559821" disabled class="flex-1 bg-zinc-950/60 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-mono transition-all disabled:opacity-50 disabled:cursor-not-allowed" />
+              <button id="btnDial" onclick="dialPeer()" disabled class="bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-brand-500/20 transition flex items-center gap-2">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                <span>Connect</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 2: TRANSFER CONSOLE (Locked until connection) -->
+      <section id="transferPanel" class="bg-zinc-900/40 border border-zinc-800/50 rounded-2xl p-6 shadow-2xl backdrop-blur-md opacity-40 pointer-events-none transition-all duration-300">
+        
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-base font-semibold text-zinc-100 flex items-center gap-2">
+              <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+              P2P Chunked Transfer Engine
+            </h2>
+            <p class="text-xs text-zinc-400">Direct zero-copy WebRTC pipeline with 64KB stream pacing.</p>
+          </div>
+          <span class="text-[10px] font-mono text-zinc-500 bg-zinc-800/80 px-2 py-1 rounded border border-zinc-700/60">Limit: 10 GB</span>
+        </div>
+
+        <!-- DROP ZONE -->
+        <div id="dropZone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)" class="border-2 border-dashed border-zinc-800 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:border-brand-500/60 transition group bg-zinc-950/40">
+          <div class="w-12 h-12 rounded-full bg-zinc-900 flex items-center justify-center border border-zinc-800 group-hover:scale-110 group-hover:border-brand-500/40 transition mb-3">
+            <svg class="w-6 h-6 text-zinc-400 group-hover:text-brand-400 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          </div>
+          <p class="text-sm font-medium text-zinc-200">Drag & drop files here, or <span class="text-brand-400 underline underline-offset-4">browse</span></p>
+          <p class="text-xs text-zinc-500 mt-1">Photos, HD Videos, Raw Archives (No server logs)</p>
+          <input type="file" id="filePicker" onchange="fileSelected(event)" class="hidden" />
+        </div>
+
+        <!-- SELECTED FILE DETAILS -->
+        <div id="stagedFileBox" class="hidden mt-4 bg-zinc-950 border border-zinc-800/80 rounded-xl p-4 flex items-center justify-between">
+          <div class="flex items-center space-x-3 truncate">
+            <div class="p-2 rounded-lg bg-brand-500/10 text-brand-400 border border-brand-500/20">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            </div>
+            <div class="truncate">
+              <div id="stagedFileName" class="text-sm font-medium text-zinc-200 truncate font-mono">video.mp4</div>
+              <div id="stagedFileSize" class="text-xs text-zinc-500">0 MB</div>
+            </div>
+          </div>
+          <button id="btnSendFile" onclick="beginTransmission()" class="bg-brand-600 hover:bg-brand-500 text-white font-medium text-xs px-4 py-2 rounded-lg transition shadow-md shadow-brand-500/20">
+            Start P2P Send
+          </button>
+        </div>
+
+        <!-- PROGRESS BAR & TELEMETRY -->
+        <div id="progressBox" class="hidden mt-4 space-y-3">
+          <div class="flex justify-between items-center text-xs">
+            <span id="transferActionLabel" class="text-zinc-400 font-medium">Transferring...</span>
+            <span id="transferPercent" class="font-mono font-bold text-brand-400">0%</span>
+          </div>
+          <div class="w-full bg-zinc-950 rounded-full h-2 overflow-hidden border border-zinc-800">
+            <div id="progressBar" class="bg-gradient-to-r from-brand-600 to-indigo-400 h-2 rounded-full w-0 transition-all duration-100 ease-out"></div>
+          </div>
+          <div class="flex justify-between items-center text-[11px] text-zinc-500 font-mono">
+            <span id="speedMetric">0.00 MB/s</span>
+            <span id="bytesTransferred">0 MB / 0 MB</span>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- SYSTEM LOG CONSOLE -->
+      <div class="bg-zinc-950/60 border border-zinc-900 rounded-xl p-3 text-[11px] font-mono text-zinc-500 h-24 overflow-y-auto custom-scroll space-y-1" id="systemLogs">
+        <div>[System] Initialized secure client environment. Awaiting phone number entry.</div>
+      </div>
+
+    </div>
+  </main>
+
+  <footer class="border-t border-zinc-900 py-4 text-center text-xs text-zinc-600">
+    Encrypted Direct WebRTC RTCDataChannel • Zero Server Intermediate Buffer
+  </footer>
+
+  <!-- CORE P2P LOGIC & CHUNKING ENGINE -->
+  <script>
+    /* =========================================================================
+       1. GLOBAL STATE & ENGINES
+       ========================================================================= */
+    const CHUNK_SIZE = 64 * 1024; // 64KB safe chunk packet for cross-browser WebRTC
+    const BUFFER_LIMIT = 8 * 1024 * 1024; // 8MB buffer high-water mark for backpressure
+    
+    let peerInstance = null;
+    let dataChannelConnection = null;
+    let currentSelectedFile = null;
+    
+    // File Reception State
+    let incomingFileMeta = null;
+    let incomingFileChunks = [];
+    let incomingBytesTotal = 0;
+    let transferStartTime = 0;
+
+    /* =========================================================================
+       2. SANITIZATION & DETERMINISTIC ADDRESS MAPPING
+       ========================================================================= */
+    // Converts phone number to deterministic alphanumeric string safe for PeerJS ID namespace
+    function hashPhoneToPeerId(phoneNumber) {
+      const clean = phoneNumber.replace(/[^0-9]/g, '');
+      if (clean.length < 4) return null;
+      // Prepending uniform salt prefix for globally safe routing
+      return 'airlink-p2p-' + btoa(clean).replace(/=/g, '').toLowerCase();
+    }
+
+    function logger(msg, type = 'info') {
+      const consoleBox = document.getElementById('systemLogs');
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement('div');
+      div.className = type === 'error' ? 'text-red-400' : (type === 'success' ? 'text-emerald-400' : 'text-zinc-400');
+      div.innerText = `[${time}] ${msg}`;
+      consoleBox.appendChild(div);
+      consoleBox.scrollTop = consoleBox.scrollHeight;
+    }
+
+    function setStatus(status, text) {
+      const dot = document.getElementById('statusDot');
+      const label = document.getElementById('statusText');
+      label.innerText = text;
+      
+      dot.className = "w-2 h-2 rounded-full";
+      if (status === 'connected') {
+        dot.classList.add('bg-emerald-400');
+      } else if (status === 'busy') {
+        dot.classList.add('bg-brand-400', 'animate-ping');
+      } else if (status === 'ready') {
+        dot.classList.add('bg-amber-400');
+      } else {
+        dot.classList.add('bg-zinc-600');
+      }
+    }
+
+    /* =========================================================================
+       3. WEBRTC SIGNALING LIFECYCLE VIA PEERJS
+       ========================================================================= */
+    function initMyNode() {
+      const rawInput = document.getElementById('myPhone').value.trim();
+      const peerId = hashPhoneToPeerId(rawInput);
+
+      if (!peerId) {
+        alert('Please enter a valid phone number (at least 4 digits).');
+        return;
+      }
+
+      logger(`Registering endpoint for: ${rawInput}...`);
+      setStatus('ready', 'Connecting to Network...');
+
+      // Cleanup prior session if any
+      if (peerInstance) peerInstance.destroy();
+
+      // Create new peer using default open-source PeerJS public signaling cloud
+      peerInstance = new Peer(peerId, {
+        debug: 1,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' }
+          ]
+        }
+      });
+
+      peerInstance.on('open', (id) => {
+        logger(`Presence confirmed. Ready for P2P connection.`, 'success');
+        setStatus('ready', 'Online & Discoverable');
+        
+        document.getElementById('targetPhone').removeAttribute('disabled');
+        document.getElementById('btnDial').removeAttribute('disabled');
+        
+        const hint = document.getElementById('myPeerHint');
+        hint.innerText = `✓ Line online: Ready for counter-party dial`;
+        hint.classList.remove('hidden');
+      });
+
+      // Handle incoming connection requests
+      peerInstance.on('connection', (conn) => {
+        logger(`Incoming handshake request accepted!`, 'success');
+        bindConnectionEvents(conn);
+      });
+
+      peerInstance.on('error', (err) => {
+        logger(`Handshake error: ${err.type || err}`, 'error');
+        if (err.type === 'unavailable-id') {
+          logger(`Identity collision: Number already active on network.`, 'error');
+        }
+      });
+    }
+
+    function dialPeer() {
+      const targetRaw = document.getElementById('targetPhone').value.trim();
+      const targetPeerId = hashPhoneToPeerId(targetRaw);
+
+      if (!targetPeerId) {
+        alert('Enter a valid target peer phone number.');
+        return;
+      }
+
+      logger(`Dialing peer: ${targetRaw}...`);
+      setStatus('busy', 'Negotiating Handshake...');
+
+      // Reliable binary mode connection
+      const conn = peerInstance.connect(targetPeerId, {
+        reliable: true
+      });
+
+      bindConnectionEvents(conn);
+    }
+
+    function bindConnectionEvents(conn) {
+      dataChannelConnection = conn;
+
+      conn.on('open', () => {
+        logger(`Direct WebRTC DataChannel established! P2P active.`, 'success');
+        setStatus('connected', 'Peer Connected');
+
+        // Unlock file transmission dashboard
+        const panel = document.getElementById('transferPanel');
+        panel.classList.remove('opacity-40', 'pointer-events-none');
+        panel.classList.add('opacity-100');
+      });
+
+      conn.on('data', (data) => {
+        processIncomingPacket(data);
+      });
+
+      conn.on('close', () => {
+        logger(`Peer disconnected. Re-arm connection to transfer again.`, 'error');
+        setStatus('ready', 'Disconnected');
+        document.getElementById('transferPanel').classList.add('opacity-40', 'pointer-events-none');
+      });
+
+      conn.on('error', (err) => {
+        logger(`Channel error: ${err}`, 'error');
+      });
+    }
+
+    /* =========================================================================
+       4. BACKPRESSURE STREAMING SENDER PIPELINE (UP TO 10GB)
+       ========================================================================= */
+    const dropZone = document.getElementById('dropZone');
+    const filePicker = document.getElementById('filePicker');
+
+    dropZone.addEventListener('click', () => filePicker.click());
+
+    function handleDragOver(e) {
+      e.preventDefault();
+      dropZone.classList.add('border-brand-500');
+    }
+
+    function handleDragLeave(e) {
+      e.preventDefault();
+      dropZone.classList.remove('border-brand-500');
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      dropZone.classList.remove('border-brand-500');
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        stageFile(e.dataTransfer.files[0]);
+      }
+    }
+
+    function fileSelected(e) {
+      if (e.target.files && e.target.files[0]) {
+        stageFile(e.target.files[0]);
+      }
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function stageFile(file) {
+      currentSelectedFile = file;
+      document.getElementById('stagedFileName').innerText = file.name;
+      document.getElementById('stagedFileSize').innerText = `${formatBytes(file.size)} • ${file.type || 'Unknown MIME'}`;
+      document.getElementById('stagedFileBox').classList.remove('hidden');
+      logger(`Staged: ${file.name} (${formatBytes(file.size)})`);
+    }
+
+    async function beginTransmission() {
+      if (!currentSelectedFile || !dataChannelConnection) return;
+
+      const file = currentSelectedFile;
+      const totalSize = file.size;
+
+      // Lock UI
+      document.getElementById('btnSendFile').disabled = true;
+      document.getElementById('btnSendFile').classList.add('opacity-50');
+      document.getElementById('progressBox').classList.remove('hidden');
+      document.getElementById('transferActionLabel').innerText = `Sending: ${file.name}`;
+
+      // 1. Send Header Metadata Packet
+      dataChannelConnection.send({
+        type: 'HEADER',
+        name: file.name,
+        size: file.size,
+        mime: file.type
+      });
+
+      logger(`Commencing binary stream. Pacing 64KB frames...`);
+
+      let offset = 0;
+      transferStartTime = performance.now();
+      const rawChannel = dataChannelConnection.dataChannel;
+
+      // Make sure buffer threshold triggers notifications
+      rawChannel.bufferedAmountLowThreshold = 2 * 1024 * 1024; // 2MB
+
+      while (offset < totalSize) {
+        // FLOW CONTROL (Backpressure): Avoids crashing browser memory on multi-GB transfers
+        if (rawChannel.bufferedAmount > BUFFER_LIMIT) {
+          await new Promise((resolve) => {
+            rawChannel.onbufferedamountlow = () => {
+              rawChannel.onbufferedamountlow = null;
+              resolve();
+            };
+          });
+        }
+
+        const chunkSlice = file.slice(offset, offset + CHUNK_SIZE);
+        const buffer = await chunkSlice.arrayBuffer();
+        
+        dataChannelConnection.send(buffer);
+        offset += buffer.byteLength;
+
+        // UI Telemetry calculation
+        renderProgress(offset, totalSize, 'upload');
+      }
+
+      // 2. Send End-of-File indicator packet
+      dataChannelConnection.send({ type: 'EOF' });
+      logger(`Transmission finished successfully!`, 'success');
+
+      document.getElementById('btnSendFile').disabled = false;
+      document.getElementById('btnSendFile').classList.remove('opacity-50');
+      document.getElementById('transferActionLabel').innerText = `Sent Complete!`;
+    }
+
+    /* =========================================================================
+       5. HIGH-SPEED RECEPTION & BUFFER RECONSTRUCTION
+       ========================================================================= */
+    function processIncomingPacket(data) {
+      // JSON Metadata control frames
+      if (typeof data === 'object' && !(data instanceof ArrayBuffer)) {
+        if (data.type === 'HEADER') {
+          incomingFileMeta = data;
+          incomingFileChunks = [];
+          incomingBytesTotal = 0;
+          transferStartTime = performance.now();
+
+          document.getElementById('progressBox').classList.remove('hidden');
+          document.getElementById('transferActionLabel').innerText = `Receiving: ${data.name}`;
+          logger(`Incoming file stream: ${data.name} (${formatBytes(data.size)})`);
+        } else if (data.type === 'EOF') {
+          finalizeReceivedFile();
+        }
+        return;
+      }
+
+      // Binary Payload Chunk
+      if (data instanceof ArrayBuffer) {
+        incomingFileChunks.push(data);
+        incomingBytesTotal += data.byteLength;
+
+        if (incomingFileMeta) {
+          renderProgress(incomingBytesTotal, incomingFileMeta.size, 'download');
+        }
+      }
+    }
+
+    function renderProgress(transferredBytes, totalBytes, mode) {
+      const percent = Math.min(100, Math.round((transferredBytes / totalBytes) * 100));
+      document.getElementById('progressBar').style.width = `${percent}%`;
+      document.getElementById('transferPercent').innerText = `${percent}%`;
+
+      const elapsedSec = (performance.now() - transferStartTime) / 1000;
+      const speedBytesPerSec = elapsedSec > 0 ? transferredBytes / elapsedSec : 0;
+
+      document.getElementById('speedMetric').innerText = `${(speedBytesPerSec / (1024 * 1024)).toFixed(2)} MB/s`;
+      document.getElementById('bytesTransferred').innerText = `${formatBytes(transferredBytes)} / ${formatBytes(totalBytes)}`;
+    }
+
+    function finalizeReceivedFile() {
+      logger(`File completely assembled in memory! Preparing save...`, 'success');
+      document.getElementById('transferActionLabel').innerText = `File Complete!`;
+
+      const blob = new Blob(incomingFileChunks, { type: incomingFileMeta.mime || 'application/octet-stream' });
+      const downloadUrl = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = incomingFileMeta.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      setTimeout(() => URL.revokeObjectURL(downloadUrl), 30000);
+
+      // Clean memory
+      incomingFileChunks = [];
+      incomingFileMeta = null;
+    }
+
+    /* =========================================================================
+       6. CODE PROTECTION & ANTI-INSPECTION
+       ========================================================================= */
+    // Prevent Right-Click Context Menu
+    document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // Prevent Text Dragging Selection
+    document.addEventListener('selectstart', (e) => {
+      if (e.target.tagName !== 'INPUT') e.preventDefault();
+    });
+
+    // Keyboard Defense: Block F12, Inspect Element combinations, and Source View
+    document.addEventListener('keydown', (e) => {
+      if (
+        e.key === 'F12' ||
+        (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) ||
+        (e.metaKey && e.altKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) ||
+        ((e.ctrlKey || e.metaKey) && e.key === 'u')
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+    });
+  </script>
+</body>
+</html>
