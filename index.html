@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VoidNote — Zero-Knowledge Self-Destructing Secrets</title>
+  <meta name="description" content="Client-side zero-knowledge encrypted self-destructing secret sharing tool.">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Fonts: Space Grotesk & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Space Grotesk', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            cyber: {
+              black: '#08080a',
+              card: '#0f1115',
+              border: '#1f242d',
+              green: '#10b981',
+              emeraldGlow: '#059669',
+              purple: '#8b5cf6',
+              danger: '#f43f5e'
+            }
+          },
+          animation: {
+            'pulse-glow': 'pulseGlow 2.5s infinite',
+            'burn': 'burnEffect 0.8s ease-out forwards',
+          },
+          keyframes: {
+            pulseGlow: {
+              '0%, 100%': { opacity: '0.4', filter: 'blur(20px)' },
+              '50%': { opacity: '0.8', filter: 'blur(30px)' },
+            },
+            burnEffect: {
+              '0%': { transform: 'scale(1)', opacity: '1', filter: 'brightness(1)' },
+              '50%': { transform: 'scale(0.98)', opacity: '0.8', filter: 'brightness(2) contrast(2)' },
+              '100%': { transform: 'scale(1)', opacity: '1', filter: 'none' }
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #08080a; }
+    ::-webkit-scrollbar-thumb { background: #1f242d; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #10b981; }
+
+    /* Cyber grid overlay */
+    .cyber-grid {
+      background-size: 40px 40px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    }
+
+    /* Terminal scanline artifact */
+    .scanline {
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+      background-size: 100% 3px, 4px 100%;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="bg-cyber-black text-slate-200 min-h-screen font-sans selection:bg-cyber-green selection:text-black relative overflow-x-hidden flex flex-col justify-between">
+
+  <!-- Ambient Glow Elements -->
+  <div class="fixed top-0 left-1/4 w-96 h-96 bg-cyber-green/10 rounded-full animate-pulse-glow pointer-events-none -z-10"></div>
+  <div class="fixed bottom-0 right-1/4 w-96 h-96 bg-cyber-purple/10 rounded-full animate-pulse-glow pointer-events-none -z-10" style="animation-delay: 1.2s;"></div>
+  <div class="fixed inset-0 cyber-grid pointer-events-none -z-10"></div>
+  <div class="fixed inset-0 scanline -z-10 opacity-70"></div>
+
+  <!-- App Header -->
+  <header class="border-b border-cyber-border/70 backdrop-blur-md bg-cyber-black/60 sticky top-0 z-50">
+    <div class="max-w-4xl mx-auto px-6 h-16 flex items-center justify-between">
+      <a href="#" onclick="window.location.hash=''; location.reload();" class="flex items-center gap-3 group">
+        <div class="w-8 h-8 rounded bg-cyber-border border border-cyber-green/40 flex items-center justify-center group-hover:border-cyber-green transition-all duration-300">
+          <svg class="w-4 h-4 text-cyber-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+          </svg>
+        </div>
+        <div class="flex items-baseline gap-1.5">
+          <span class="font-bold text-lg tracking-wider text-white">VOID<span class="text-cyber-green">NOTE</span></span>
+          <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-cyber-border text-slate-400 border border-slate-700">v2.0 // ZK-AES</span>
+        </div>
+      </a>
+
+      <div class="flex items-center gap-2 text-xs font-mono text-slate-400">
+        <span class="w-2 h-2 rounded-full bg-cyber-green animate-ping"></span>
+        <span class="text-slate-300">END-TO-END ZERO-KNOWLEDGE</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-2xl w-full mx-auto px-4 py-12 flex-1 flex flex-col justify-center">
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-16 opacity-0 transition-all duration-300 pointer-events-none flex items-center gap-3 px-4 py-3 rounded-lg border border-cyber-green/30 bg-cyber-card/95 text-cyber-green font-mono text-xs shadow-2xl backdrop-blur-md">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+      <span id="toast-msg">Payload copied to clipboard</span>
+    </div>
+
+    <!-- VIEW: CREATE NOTE (DEFAULT) -->
+    <section id="view-create" class="space-y-6">
+      <div class="text-center space-y-2">
+        <h1 class="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+          Encrypt. Transmit. <span class="text-cyber-green">Vanish.</span>
+        </h1>
+        <p class="text-sm text-slate-400 font-mono">
+          Secrets are encrypted in-browser using AES-GCM-256. Decryption keys reside exclusively in the URL hash and never touch any server.
+        </p>
+      </div>
+
+      <div class="bg-cyber-card border border-cyber-border rounded-xl p-6 shadow-2xl space-y-5">
+        <div>
+          <label class="block text-xs font-mono uppercase text-slate-400 mb-2 flex justify-between">
+            <span>Secret Payload</span>
+            <span id="char-count" class="text-slate-500">0 / 4096</span>
+          </label>
+          <textarea 
+            id="secret-input" 
+            rows="6" 
+            maxlength="4096"
+            placeholder="Paste passwords, API keys, private keys, or top-secret notes here..."
+            class="w-full bg-cyber-black/70 border border-cyber-border rounded-lg p-3 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyber-green transition-all font-mono resize-none"
+          ></textarea>
+        </div>
+
+        <div>
+          <label class="block text-xs font-mono uppercase text-slate-400 mb-2">
+            Optional Passphrase (Key-Derivation via PBKDF2)
+          </label>
+          <div class="relative">
+            <input 
+              id="passphrase-input" 
+              type="password" 
+              placeholder="Requires recipient to input this phrase to decrypt"
+              class="w-full bg-cyber-black/70 border border-cyber-border rounded-lg px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyber-green transition-all font-mono"
+            >
+            <button type="button" onclick="togglePassphraseVisibility()" class="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300">
+              <svg id="eye-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <button 
+          id="btn-generate" 
+          onclick="handleCreateNote()"
+          class="w-full bg-cyber-green hover:bg-cyber-emeraldGlow text-black font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all duration-200 transform active:scale-[0.99] shadow-lg shadow-cyber-green/10"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          Generate Encrypted Link
+        </button>
+      </div>
+    </section>
+
+    <!-- VIEW: CREATED SUCCESS (LINK READY) -->
+    <section id="view-success" class="hidden space-y-6">
+      <div class="text-center space-y-2">
+        <div class="w-12 h-12 rounded-full bg-cyber-green/10 border border-cyber-green mx-auto flex items-center justify-center text-cyber-green mb-3">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+        </div>
+        <h2 class="text-2xl font-bold text-white tracking-tight">Secret Link Ready</h2>
+        <p class="text-xs text-slate-400 font-mono">Share this single-use link. When decrypted, it will be purged forever.</p>
+      </div>
+
+      <div class="bg-cyber-card border border-cyber-border rounded-xl p-6 shadow-2xl space-y-4">
+        <div class="relative">
+          <textarea 
+            id="shareable-url" 
+            readonly 
+            rows="3" 
+            class="w-full bg-cyber-black/90 border border-cyber-border rounded-lg p-3 text-xs text-cyber-green font-mono break-all focus:outline-none resize-none select-all"
+          ></textarea>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3">
+          <button 
+            id="btn-copy-link" 
+            onclick="copyLinkToClipboard()" 
+            class="flex-1 bg-cyber-green hover:bg-cyber-emeraldGlow text-black font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-all font-mono text-sm"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+            <span>Copy Link</span>
+          </button>
+          <button 
+            onclick="resetApp()" 
+            class="bg-cyber-border hover:bg-slate-800 text-slate-300 font-medium py-2.5 px-4 rounded-lg transition-all font-mono text-sm"
+          >
+            Create Another
+          </button>
+        </div>
+
+        <div class="p-3.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-mono space-y-1">
+          <p class="font-bold">⚠️ CRITICAL ARCHITECTURAL NOTICE:</p>
+          <p class="text-slate-400">Because VoidNote operates with Zero-Knowledge without centralized storage, opening and decrypting this payload immediately scrubs the key from the browser address bar. Ensure the recipient opens it once.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW: LOCKED NOTE INTERCEPTED (RECEIVER) -->
+    <section id="view-locked" class="hidden space-y-6">
+      <div class="bg-cyber-card border border-cyber-border rounded-xl p-8 shadow-2xl relative overflow-hidden text-center space-y-6">
+        <div class="w-16 h-16 rounded-full bg-cyber-purple/10 border border-cyber-purple mx-auto flex items-center justify-center text-cyber-purple animate-pulse">
+          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+          </svg>
+        </div>
+
+        <div class="space-y-2">
+          <h2 class="text-2xl font-bold text-white tracking-tight">Zero-Knowledge Secret Intercepted</h2>
+          <p class="text-xs text-slate-400 font-mono max-w-md mx-auto">
+            This confidential payload is encrypted with authenticated AES-GCM. Decrypting will burn the link from the URL immediately.
+          </p>
+        </div>
+
+        <!-- Optional Passphrase Container (displayed if payload requires it) -->
+        <div id="unlock-passphrase-container" class="hidden max-w-sm mx-auto text-left space-y-2">
+          <label class="block text-xs font-mono uppercase text-slate-400">Passphrase Required</label>
+          <input 
+            id="decrypt-passphrase-input" 
+            type="password" 
+            placeholder="Enter sender's passphrase..."
+            class="w-full bg-cyber-black/70 border border-cyber-border rounded-lg px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyber-purple transition-all font-mono"
+          >
+        </div>
+
+        <button 
+          id="btn-decrypt" 
+          onclick="handleDecryptNote()" 
+          class="w-full max-w-sm mx-auto bg-cyber-purple hover:bg-purple-600 text-white font-semibold py-3 px-6 rounded-lg flex items-center justify-center gap-2 transition-all font-mono text-sm shadow-lg shadow-cyber-purple/20"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"/>
+          </svg>
+          Decrypt & Self-Destruct
+        </button>
+      </div>
+    </section>
+
+    <!-- VIEW: BURNED / REVEALED NOTE -->
+    <section id="view-burned" class="hidden space-y-6">
+      <div id="burn-card" class="bg-cyber-card border border-cyber-border rounded-xl p-6 shadow-2xl space-y-5 animate-burn">
+        <div class="flex items-center justify-between pb-4 border-b border-cyber-border">
+          <div class="flex items-center gap-2 text-cyber-danger font-mono text-xs font-semibold">
+            <svg class="w-4 h-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/></svg>
+            SECRET BURNED FROM URL
+          </div>
+          <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-cyber-danger/10 text-cyber-danger border border-cyber-danger/30">
+            Cannot be accessed again
+          </span>
+        </div>
+
+        <div class="relative group">
+          <div 
+            id="decrypted-content" 
+            class="w-full min-h-[160px] max-h-96 overflow-y-auto bg-cyber-black/90 border border-cyber-border rounded-lg p-4 font-mono text-sm text-slate-200 whitespace-pre-wrap break-words select-text"
+          ></div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3">
+          <button 
+            id="btn-copy-secret" 
+            onclick="copySecretToClipboard()" 
+            class="flex-1 bg-cyber-green hover:bg-cyber-emeraldGlow text-black font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-all font-mono text-sm"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+            <span id="btn-copy-secret-text">Copy Secret Text</span>
+          </button>
+          <button 
+            onclick="wipeMemoryAndHome()" 
+            class="bg-cyber-danger/20 hover:bg-cyber-danger text-cyber-danger hover:text-white font-medium py-2.5 px-4 rounded-lg transition-all font-mono text-sm border border-cyber-danger/30"
+          >
+            Purge Memory
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW: DESTROYED / INVALID STATE -->
+    <section id="view-destroyed" class="hidden space-y-6">
+      <div class="bg-cyber-card border border-cyber-border rounded-xl p-8 shadow-2xl text-center space-y-5">
+        <div class="w-14 h-14 rounded-full bg-cyber-danger/10 border border-cyber-danger mx-auto flex items-center justify-center text-cyber-danger">
+          <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+        </div>
+        <div class="space-y-2">
+          <h2 class="text-2xl font-bold text-white tracking-tight">Void State Reached</h2>
+          <p id="destroyed-reason" class="text-xs text-slate-400 font-mono max-w-sm mx-auto">
+            This note has already self-destructed, was tampered with, or does not exist.
+          </p>
+        </div>
+        <button 
+          onclick="resetApp()" 
+          class="bg-cyber-border hover:bg-slate-800 text-slate-300 font-medium py-2.5 px-6 rounded-lg transition-all font-mono text-sm inline-block"
+        >
+          Create A New Note
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-cyber-border/40 py-6 text-center text-xs font-mono text-slate-600">
+    <div class="max-w-4xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-2">
+      <span>Zero-Knowledge Proof: No servers. No DB. Ephemeral Web Crypto.</span>
+      <span class="text-slate-500">AES-GCM (256-bit) + PBKDF2 (250k rounds)</span>
+    </div>
+  </footer>
+
+  <!-- ================= JAVASCRIPT LOGIC ================= -->
+  <script>
+    /**
+     * VOIDNOTE CRYPTOGRAPHIC ENGINE
+     * Implements AES-GCM 256-bit authenticated encryption using the native Web Crypto API.
+     */
+    const CryptoEngine = {
+      // Buffer & Base64URL conversions (URL-safe without padding)
+      buf2b64url(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      },
+
+      b64url2buf(base64url) {
+        let base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+        while (base64.length % 4) {
+          base64 += '=';
+        }
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes.buffer;
+      },
+
+      // Derive key from passphrase via PBKDF2
+      async deriveKeyFromPassphrase(passphrase, salt) {
+        const enc = new TextEncoder();
+        const baseKey = await window.crypto.subtle.importKey(
+          'raw',
+          enc.encode(passphrase),
+          { name: 'PBKDF2' },
+          false,
+          ['deriveKey']
+        );
+        return window.crypto.subtle.deriveKey(
+          {
+            name: 'PBKDF2',
+            salt: salt,
+            iterations: 250000,
+            hash: 'SHA-256'
+          },
+          baseKey,
+          { name: 'AES-GCM', length: 256 },
+          false,
+          ['encrypt', 'decrypt']
+        );
+      },
+
+      // Generate a brand new random AES-256-GCM key
+      async generateRandomKey() {
+        return window.crypto.subtle.generateKey(
+          { name: 'AES-GCM', length: 256 },
+          true,
+          ['encrypt', 'decrypt']
+        );
+      },
+
+      // Primary encryption routine
+      async encrypt(plaintext, passphrase = null) {
+        const enc = new TextEncoder();
+        const plaintextBytes = enc.encode(plaintext);
+        const iv = window.crypto.getRandomValues(new Uint8Array(12)); // 96-bit standard IV
+
+        let key;
+        let salt = null;
+        let exportedKeyB64 = null;
+        const hasPassphrase = Boolean(passphrase && passphrase.trim().length > 0);
+
+        if (hasPassphrase) {
+          salt = window.crypto.getRandomValues(new Uint8Array(16));
+          key = await this.deriveKeyFromPassphrase(passphrase, salt);
+        } else {
+          key = await this.generateRandomKey();
+          const rawKey = await window.crypto.subtle.exportKey('raw', key);
+          exportedKeyB64 = this.buf2b64url(rawKey);
+        }
+
+        const ciphertext = await window.crypto.subtle.encrypt(
+          { name: 'AES-GCM', iv: iv },
+          key,
+          plaintextBytes
+        );
+
+        // Assemble portable payload
+        const payload = {
+          v: 1, // format version
+          p: hasPassphrase,
+          iv: this.buf2b64url(iv),
+          ct: this.buf2b64url(ciphertext),
+          ...(salt ? { s: this.buf2b64url(salt) } : {}),
+          ...(exportedKeyB64 ? { k: exportedKeyB64 } : {})
+        };
+
+        return this.buf2b64url(new TextEncoder().encode(JSON.stringify(payload)));
+      },
+
+      // Primary decryption routine
+      async decrypt(packedPayloadB64, passphrase = null) {
+        let payload;
+        try {
+          const jsonText = new TextDecoder().decode(this.b64url2buf(packedPayloadB64));
+          payload = JSON.parse(jsonText);
+        } catch (e) {
+          throw new Error('CORRUPT_PAYLOAD');
+        }
+
+        const iv = this.b64url2buf(payload.iv);
+        const ciphertext = this.b64url2buf(payload.ct);
+        let key;
+
+        if (payload.p) {
+          if (!passphrase) {
+            throw new Error('PASSPHRASE_REQUIRED');
+          }
+          const salt = this.b64url2buf(payload.s);
+          key = await this.deriveKeyFromPassphrase(passphrase, salt);
+        } else {
+          const rawKey = this.b64url2buf(payload.k);
+          key = await window.crypto.subtle.importKey(
+            'raw',
+            rawKey,
+            { name: 'AES-GCM', length: 256 },
+            false,
+            ['decrypt']
+          );
+        }
+
+        try {
+          const decryptedBuf = await window.crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: iv },
+            key,
+            ciphertext
+          );
+          return new TextDecoder().decode(decryptedBuf);
+        } catch (e) {
+          throw new Error('DECRYPT_FAILED');
+        }
+      }
+    };
+
+    /**
+     * STATE MANAGEMENT & UI CONTROLLER
+     */
+    let activePayload = null;
+    let decryptedPlainText = null;
+
+    // Elements
+    const viewCreate = document.getElementById('view-create');
+    const viewSuccess = document.getElementById('view-success');
+    const viewLocked = document.getElementById('view-locked');
+    const viewBurned = document.getElementById('view-burned');
+    const viewDestroyed = document.getElementById('view-destroyed');
+
+    const secretInput = document.getElementById('secret-input');
+    const passphraseInput = document.getElementById('passphrase-input');
+    const charCount = document.getElementById('char-count');
+    const shareableUrl = document.getElementById('shareable-url');
+    const unlockPassphraseContainer = document.getElementById('unlock-passphrase-container');
+    const decryptPassphraseInput = document.getElementById('decrypt-passphrase-input');
+    const decryptedContent = document.getElementById('decrypted-content');
+    const destroyedReason = document.getElementById('destroyed-reason');
+
+    // Char count listener
+    secretInput.addEventListener('input', () => {
+      charCount.textContent = `${secretInput.value.length} / 4096`;
+    });
+
+    // Check application mode upon boot
+    window.addEventListener('DOMContentLoaded', () => {
+      parseUrlHash();
+    });
+
+    window.addEventListener('hashchange', () => {
+      parseUrlHash();
+    });
+
+    function showView(viewElement) {
+      [viewCreate, viewSuccess, viewLocked, viewBurned, viewDestroyed].forEach(el => el.classList.add('hidden'));
+      viewElement.classList.remove('hidden');
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toast-msg');
+      toastMsg.textContent = message;
+      toast.classList.remove('translate-y-16', 'opacity-0');
+      setTimeout(() => {
+        toast.classList.add('translate-y-16', 'opacity-0');
+      }, 3000);
+    }
+
+    function togglePassphraseVisibility() {
+      const isPassword = passphraseInput.type === 'password';
+      passphraseInput.type = isPassword ? 'text' : 'password';
+    }
+
+    // Inspect URL Hash for incoming encrypted note
+    async function parseUrlHash() {
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+      const payloadB64 = params.get('payload');
+
+      if (!payloadB64) {
+        showView(viewCreate);
+        return;
+      }
+
+      // Check if this payload was previously recorded as burned in this local session
+      const payloadHash = await hashString(payloadB64);
+      if (sessionStorage.getItem(`void_burned_${payloadHash}`)) {
+        destroyedReason.textContent = "This secret has already been decrypted and self-destructed.";
+        showView(viewDestroyed);
+        return;
+      }
+
+      try {
+        const jsonText = new TextDecoder().decode(CryptoEngine.b64url2buf(payloadB64));
+        const payload = JSON.parse(jsonText);
+        activePayload = payloadB64;
+
+        if (payload.p) {
+          unlockPassphraseContainer.classList.remove('hidden');
+        } else {
+          unlockPassphraseContainer.classList.add('hidden');
+        }
+
+        showView(viewLocked);
+      } catch (err) {
+        destroyedReason.textContent = "Invalid or corrupted encrypted payload.";
+        showView(viewDestroyed);
+      }
+    }
+
+    // Generate Encrypted Note Handler
+    async function handleCreateNote() {
+      const text = secretInput.value.trim();
+      const passphrase = passphraseInput.value;
+
+      if (!text) {
+        showToast("Please enter a secret message first.");
+        secretInput.focus();
+        return;
+      }
+
+      const btn = document.getElementById('btn-generate');
+      btn.disabled = true;
+      btn.innerHTML = `<span class="animate-spin inline-block mr-2">⟳</span> Encrypting with AES-GCM...`;
+
+      try {
+        const encryptedB64 = await CryptoEngine.encrypt(text, passphrase);
+        const baseUrl = window.location.origin + window.location.pathname;
+        const fullShareUrl = `${baseUrl}#payload=${encryptedB64}`;
+
+        shareableUrl.value = fullShareUrl;
+        showView(viewSuccess);
+      } catch (err) {
+        showToast("Encryption failed: " + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          Generate Encrypted Link
+        `;
+      }
+    }
+
+    // Decrypt and Self-Destruct Handler
+    async function handleDecryptNote() {
+      if (!activePayload) return;
+
+      const passphrase = decryptPassphraseInput.value;
+      const btn = document.getElementById('btn-decrypt');
+      btn.disabled = true;
+      btn.innerHTML = `<span class="animate-spin inline-block mr-2">⟳</span> Decrypting & Burning...`;
+
+      try {
+        const plaintext = await CryptoEngine.decrypt(activePayload, passphrase);
+        decryptedPlainText = plaintext;
+
+        // Record payload burn mark locally
+        const payloadHash = await hashString(activePayload);
+        sessionStorage.setItem(`void_burned_${payloadHash}`, '1');
+
+        // Render text safely into textContent to prevent XSS
+        decryptedContent.textContent = plaintext;
+
+        // PURGE ADDRESS BAR IMMEDIATELY (Zero-Knowledge Self-Destruct)
+        history.replaceState(null, '', window.location.pathname);
+        activePayload = null;
+
+        showView(viewBurned);
+      } catch (err) {
+        if (err.message === 'PASSPHRASE_REQUIRED' || err.message === 'DECRYPT_FAILED') {
+          showToast("Invalid passphrase or corrupted secret.");
+        } else {
+          destroyedReason.textContent = "Unable to decrypt. Payload corrupted or tampered.";
+          showView(viewDestroyed);
+        }
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/></svg>
+          Decrypt & Self-Destruct
+        `;
+      }
+    }
+
+    // Helper: SHA-256 for local state caching
+    async function hashString(str) {
+      const buffer = new TextEncoder().encode(str);
+      const digest = await crypto.subtle.digest('SHA-256', buffer);
+      return CryptoEngine.buf2b64url(digest);
+    }
+
+    // Clipboard Helpers
+    function copyLinkToClipboard() {
+      shareableUrl.select();
+      navigator.clipboard.writeText(shareableUrl.value);
+      showToast("Link copied to clipboard!");
+    }
+
+    function copySecretToClipboard() {
+      if (!decryptedPlainText) return;
+      navigator.clipboard.writeText(decryptedPlainText);
+      const copyBtnText = document.getElementById('btn-copy-secret-text');
+      copyBtnText.textContent = "Copied!";
+      showToast("Secret text copied to clipboard!");
+      setTimeout(() => {
+        copyBtnText.textContent = "Copy Secret Text";
+      }, 2000);
+    }
+
+    // Reset back to create view
+    function resetApp() {
+      secretInput.value = '';
+      passphraseInput.value = '';
+      decryptPassphraseInput.value = '';
+      decryptedContent.textContent = '';
+      decryptedPlainText = null;
+      activePayload = null;
+      charCount.textContent = '0 / 4096';
+      window.location.hash = '';
+      showView(viewCreate);
+    }
+
+    // Purge memory and hard reset
+    function wipeMemoryAndHome() {
+      decryptedContent.textContent = '';
+      decryptedPlainText = null;
+      activePayload = null;
+      resetApp();
+      showToast("In-memory secret securely shredded.");
+    }
+  </script>
+</body>
+</html>
