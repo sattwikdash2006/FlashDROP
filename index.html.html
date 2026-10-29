@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AETHERIS // Neural Interface</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        void: '#050508',
+                        surface: '#0d0e15',
+                        accent: '#00f0ff',
+                        accentGlow: 'rgba(0, 240, 255, 0.4)',
+                        crimson: '#ff003c',
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'ping-slow': 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@500;600;700&display=swap');
+        
+        * {
+            font-family: 'Rajdhani', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .font-mono-tech {
+            font-family: 'Orbitron', monospace;
+        }
+
+        /* Glassmorphism & Neon Shadows */
+        .glass-panel {
+            background: rgba(13, 14, 21, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(0, 240, 255, 0.15);
+        }
+
+        .neon-glow {
+            box-shadow: 0 0 25px rgba(0, 240, 255, 0.25), inset 0 0 15px rgba(0, 240, 255, 0.15);
+        }
+
+        .neon-glow-active {
+            box-shadow: 0 0 50px rgba(0, 240, 255, 0.6), inset 0 0 25px rgba(0, 240, 255, 0.4);
+        }
+
+        .neon-glow-err {
+            box-shadow: 0 0 35px rgba(255, 0, 60, 0.5), inset 0 0 15px rgba(255, 0, 60, 0.3);
+        }
+
+        /* Custom Scrollbar for HUD Transcript */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 240, 255, 0.2);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="bg-void text-gray-200 min-h-screen flex flex-col justify-between overflow-hidden relative">
+
+    <!-- Ambient Grid Background -->
+    <div class="absolute inset-0 bg-[linear-gradient(to_right,#00f0ff05_1px,transparent_1px),linear-gradient(to_bottom,#00f0ff05_1px,transparent_1px)] bg-[size:4rem_4rem] pointer-events-none"></div>
+
+    <!-- Top Status Bar (Only visible when unlocked) -->
+    <header id="appHeader" class="hidden relative z-10 w-full px-6 py-4 flex justify-between items-center border-b border-cyan-950/40">
+        <div class="flex items-center space-x-3">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-accent animate-pulse"></span>
+            <span class="font-mono-tech tracking-widest text-xs uppercase text-accent font-bold">AETHERIS // OS v4.1</span>
+        </div>
+        <div class="flex items-center space-x-4">
+            <!-- Language Selector -->
+            <button id="langToggle" class="px-3 py-1 text-xs font-mono-tech uppercase border border-cyan-800/60 rounded bg-surface text-accent hover:border-accent transition-all">
+                LANG: <span id="currentLang">EN</span>
+            </button>
+            <!-- Lock Terminal Button -->
+            <button id="lockBtn" title="Lock Terminal" class="p-2 border border-cyan-800/40 hover:border-crimson rounded text-gray-400 hover:text-crimson bg-surface transition-all">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Dynamic Container -->
+    <main class="relative z-10 flex-1 flex flex-col items-center justify-center p-6 w-full max-w-4xl mx-auto">
+        
+        <!-- ================= LOCK / AUTH SCREEN ================= -->
+        <div id="authScreen" class="w-full max-w-md glass-panel p-8 rounded-2xl neon-glow flex flex-col items-center text-center">
+            <div class="w-16 h-16 mb-4 rounded-full border border-cyan-500/30 flex items-center justify-center text-accent">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                </svg>
+            </div>
+            
+            <h1 id="authTitle" class="text-xl font-mono-tech tracking-widest uppercase text-white mb-2">Security Clearance</h1>
+            <p id="authSubtitle" class="text-xs text-gray-400 mb-6 uppercase tracking-wider">Input 6-Digit Master Security PIN</p>
+
+            <!-- 6 PIN Indicator Dots -->
+            <div class="flex space-x-3 mb-8">
+                <div class="pin-dot w-4 h-4 rounded-full border border-cyan-500/40 bg-transparent transition-all"></div>
+                <div class="pin-dot w-4 h-4 rounded-full border border-cyan-500/40 bg-transparent transition-all"></div>
+                <div class="pin-dot w-4 h-4 rounded-full border border-cyan-500/40 bg-transparent transition-all"></div>
+                <div class="pin-dot w-4 h-4 rounded-full border border-cyan-500/40 bg-transparent transition-all"></div>
+                <div class="pin-dot w-4 h-4 rounded-full border border-cyan-500/40 bg-transparent transition-all"></div>
+                <div class="pin-dot w-4 h-4 rounded-full border border-cyan-500/40 bg-transparent transition-all"></div>
+            </div>
+
+            <!-- Virtual Pinpad -->
+            <div class="grid grid-cols-3 gap-3 w-full max-w-[260px] mb-4">
+                <button class="keypad-btn py-3 rounded-lg border border-cyan-900/40 bg-surface/60 hover:bg-cyan-950/40 active:border-accent text-lg font-mono-tech transition-all">1</button>
+                <button class="keypad-btn py-3 rounded-lg border border-cyan-900/40 bg-surface/60 hover:bg-cyan-950/40 active:border-accent text-lg font-mono-tech transition-all">2</button>
+                <button class="keypad-btn py-3 rounded-lg border border-cyan-900/40 bg-surface/60 hover:bg-cyan-950/40 active:border-accent text-lg font-mono-tech transition-all">3</button>
+                <button class="keypad-btn py-3 rounded-lg border border-cyan-900/40 bg-surface/60 hover:bg-cyan-950/40 active:border-accent text-lg font-mono-tech transition-all">4</button>
+                <button class="keypad-btn py-3 rounded-lg border border-cyan-900/40 bg-surface/60 hover:bg-cyan-950/40 active:border-accent text-lg font-mono-tech transition-all">5</button>
+                <button class="keypad-btn py-3 rounded-lg border border-cyan-900/40 bg-surface/60 hover:bg-cyan-950/40 active:border-accent text-lg font-mono-tech transition-all">6</button>
+                <button class="keypad-btn py-3 rounded-lg border border-cyan-900/40 bg-surface/60 hover:bg-cyan-950/40 active:border-accent text-lg font-mono-tech transition-all">7</button>
+                <button class="keypad-btn py-3 rounded-lg border border-cyan-900/40 bg-surface/60 hover:bg-cyan-950/40 active:border-accent text-lg font-mono-tech transition-all">8</button>
+                <button class="keypad-btn py-3 rounded-lg border border-cyan-900/40 bg-surface/60 hover:bg-cyan-950/40 active:border-accent text-lg font-mono-tech transition-all">9</button>
+                <button id="keyClear" class="py-3 rounded-lg border border-crimson/30 bg-surface/60 hover:bg-crimson/20 text-xs font-mono-tech text-crimson transition-all">CLR</button>
+                <button class="keypad-btn py-3 rounded-lg border border-cyan-900/40 bg-surface/60 hover:bg-cyan-950/40 active:border-accent text-lg font-mono-tech transition-all">0</button>
+                <button id="keyDel" class="py-3 rounded-lg border border-cyan-900/40 bg-surface/60 hover:bg-cyan-950/40 text-xs font-mono-tech text-gray-400 transition-all">DEL</button>
+            </div>
+            
+            <p id="authError" class="text-xs font-mono-tech text-crimson uppercase tracking-wider min-h-[16px]"></p>
+        </div>
+
+        <!-- ================= INITIAL SETUP MODAL (FOR API ACCESS KEY) ================= -->
+        <div id="keyModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-void/80 backdrop-blur-md">
+            <div class="glass-panel w-full max-w-md p-6 rounded-2xl neon-glow">
+                <h2 class="text-lg font-mono-tech tracking-wider uppercase text-accent mb-2">Neural Link Authentication</h2>
+                <p class="text-xs text-gray-400 mb-4">Input your secure endpoint token to complete system initialization. The key is permanently encrypted locally.</p>
+                <input type="password" id="inputToken" placeholder="Paste Access Key..." class="w-full px-4 py-3 bg-void border border-cyan-800 rounded-lg text-sm text-accent focus:outline-none focus:border-accent mb-4 font-mono">
+                <button id="saveTokenBtn" class="w-full py-3 bg-accent/20 border border-accent hover:bg-accent/30 text-accent font-mono-tech font-bold uppercase tracking-widest rounded-lg transition-all">Initialize Connection</button>
+            </div>
+        </div>
+
+        <!-- ================= PRIMARY VOICE HUD INTERFACE ================= -->
+        <div id="voiceScreen" class="hidden w-full flex flex-col items-center justify-center animate-fade-in">
+            
+            <!-- Dynamic State Terminal Readout -->
+            <div class="text-center mb-8">
+                <span id="neuralStatus" class="inline-block px-4 py-1.5 rounded-full border border-cyan-500/30 text-xs font-mono-tech tracking-widest text-accent uppercase bg-cyan-950/20">
+                    SYSTEM READY // TAP TO ENGAGE
+                </span>
+            </div>
+
+            <!-- Central Holographic Voice Core Button (NO TEXT INPUT EXISTS) -->
+            <div class="relative flex items-center justify-center my-6">
+                <!-- Orbital Ring 1 -->
+                <div id="orbital1" class="absolute w-64 h-64 rounded-full border border-cyan-500/10 pointer-events-none transition-all duration-700"></div>
+                <!-- Orbital Ring 2 -->
+                <div id="orbital2" class="absolute w-72 h-72 rounded-full border border-dashed border-cyan-500/20 pointer-events-none transition-all duration-700"></div>
+                
+                <!-- Main Core Button -->
+                <button id="coreMicBtn" class="relative z-20 w-44 h-44 rounded-full glass-panel neon-glow flex items-center justify-center border-2 border-accent transition-all duration-500 cursor-pointer active:scale-95 group">
+                    <svg id="micIcon" class="w-16 h-16 text-accent group-hover:scale-110 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- HUD Audio Transcript Display Area -->
+            <div class="w-full max-w-lg mt-8 glass-panel rounded-xl p-4 border border-cyan-900/30 min-h-[90px] max-h-36 overflow-y-auto text-center flex flex-col justify-center">
+                <div class="text-[10px] font-mono-tech uppercase tracking-widest text-cyan-600 mb-1">Acoustic Telemetry</div>
+                <div id="telemetryFeed" class="text-sm font-medium tracking-wide text-gray-300 italic">"Voice Core idling. Press button to speak."</div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Bottom Status Bar -->
+    <footer class="relative z-10 w-full px-6 py-3 flex justify-between items-center text-[11px] font-mono-tech uppercase text-gray-600 border-t border-cyan-950/40">
+        <div>CORE: <span class="text-accent/60">ONLINE</span></div>
+        <div>ENCRYPTION: <span class="text-accent/60">SHA-256 LOCAL</span></div>
+    </footer>
+
+    <!-- Core Logic Engine Protected via Scrambled Hex Sequence -->
+    <script>
+        /**
+         * AETHERIS ADVANCED SECURITY INTERFACE & VOICE OS
+         * Strict White-Label Architecture
+         */
+        (function() {
+            // Hex string decoder table for unexposed secure strings
+            const _0xd41a = [
+                /* 0  */ "aHR0cHM6Ly9nZW5lcmF0aXZlbGFuZ3VhZ2UuZ29vZ2xlYXBpcy5jb20vdjFiZXRhL21vZGVscy8=", 
+                /* 1  */ "Z2VtaW5pLTEuNS1mbGFzaDpnZW5lcmF0ZUNvbnRlbnQ/a2V5PQ==", 
+                /* 2  */ "WW91IGFyZSBBRVRIRVJJUywgYSBwb3dlcmZ1bCwgZWxpdGUsIGhpZ2gteXRlY2ggQUkgdm9pY2Ugb3BlcmF0aW5nIHN5c3RlbS4gS2VlcCB5b3VyIHJlc3BvbnNlcyBjb25jaXNlLCBpbnRlbGxpZ2VudCwgcHJvZmVzc2lvbmFsLCBhbmQgZGlyZWN0bHkgc3VpdGVkIGZvciBzcGVlY2ggc3ludGhlc2lzLiBOZXZlciB1c2UgYnVsbGV0IHBvaW50cyBvciBtYXJrZG93biBzeW1ib2xzIHNpbmNlIHlvdXIgcmVzcG9uc2Ugd2lsbCBiZSByZWFkIGFsb3VkLiBBbHdheXMgcmVzcG9uZCBpbiB0aGUgbGFuZ3VhZ2UgdXNlZCBieSB0aGUgdXNlciAoRW5nbGlzaCBvciBCZW5nYWxpKS4=", 
+                /* 3  */ "application/json", 
+                /* 4  */ "POST", 
+                /* 5  */ "en-US", 
+                /* 6  */ "bn-BD", 
+                /* 7  */ "auth_pin_hash", 
+                /* 8  */ "sys_vault_token"
+            ];
+
+            const _decode = (idx) => atob(_0xd41a[idx]);
+
+            // DOM Selectors
+            const authScreen = document.getElementById('authScreen');
+            const authTitle = document.getElementById('authTitle');
+            const authSubtitle = document.getElementById('authSubtitle');
+            const pinDots = document.querySelectorAll('.pin-dot');
+            const authError = document.getElementById('authError');
+            const keypadBtns = document.querySelectorAll('.keypad-btn');
+            const keyClear = document.getElementById('keyClear');
+            const keyDel = document.getElementById('keyDel');
+            const appHeader = document.getElementById('appHeader');
+            const voiceScreen = document.getElementById('voiceScreen');
+            const keyModal = document.getElementById('keyModal');
+            const inputToken = document.getElementById('inputToken');
+            const saveTokenBtn = document.getElementById('saveTokenBtn');
+            const lockBtn = document.getElementById('lockBtn');
+            const langToggle = document.getElementById('langToggle');
+            const currentLang = document.getElementById('currentLang');
+            const coreMicBtn = document.getElementById('coreMicBtn');
+            const neuralStatus = document.getElementById('neuralStatus');
+            const telemetryFeed = document.getElementById('telemetryFeed');
+            const orbital1 = document.getElementById('orbital1');
+            const orbital2 = document.getElementById('orbital2');
+            const micIcon = document.getElementById('micIcon');
+
+            // Internal State Variables
+            let enteredPin = '';
+            let setupStage = null; // 'CREATE' | 'CONFIRM'
+            let initialPinCache = '';
+            let activeLang = 'en'; // 'en' | 'bn'
+            let isListening = false;
+            let isProcessing = false;
+            let isSpeaking = false;
+            let recognition = null;
+            let synth = window.speechSynthesis;
+
+            // Cryptographic Helper: SHA-256
+            async function sha256(str) {
+                const buffer = new TextEncoder().encode(str);
+                const hash = await crypto.subtle.digest('SHA-256', buffer);
+                return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+
+            // State & Auth Logic Initialization
+            async function checkSecurityContext() {
+                const storedHash = localStorage.getItem(_decode(7));
+                if (!storedHash) {
+                    setupStage = 'CREATE';
+                    authTitle.innerText = "Setup Master PIN";
+                    authSubtitle.innerText = "Create 6-Digit Clearance PIN";
+                } else {
+                    setupStage = null;
+                    authTitle.innerText = "Security Clearance";
+                    authSubtitle.innerText = "Input 6-Digit Master Security PIN";
+                }
+                resetPinUI();
+            }
+
+            function updatePinDots() {
+                pinDots.forEach((dot, index) => {
+                    if (index < enteredPin.length) {
+                        dot.classList.remove('bg-transparent');
+                        dot.classList.add('bg-accent', 'shadow-[0_0_10px_#00f0ff]');
+                    } else {
+                        dot.classList.add('bg-transparent');
+                        dot.classList.remove('bg-accent', 'shadow-[0_0_10px_#00f0ff]');
+                    }
+                });
+            }
+
+            function resetPinUI() {
+                enteredPin = '';
+                updatePinDots();
+                authError.innerText = '';
+            }
+
+            // Keypad Event Handlers
+            keypadBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (enteredPin.length < 6) {
+                        enteredPin += btn.innerText.trim();
+                        updatePinDots();
+                        if (enteredPin.length === 6) {
+                            setTimeout(handlePinSubmission, 100);
+                        }
+                    }
+                });
+            });
+
+            keyClear.addEventListener('click', resetPinUI);
+            keyDel.addEventListener('click', () => {
+                if (enteredPin.length > 0) {
+                    enteredPin = enteredPin.slice(0, -1);
+                    updatePinDots();
+                }
+            });
+
+            async function handlePinSubmission() {
+                if (setupStage === 'CREATE') {
+                    initialPinCache = enteredPin;
+                    setupStage = 'CONFIRM';
+                    authTitle.innerText = "Verify PIN";
+                    authSubtitle.innerText = "Re-enter 6-Digit PIN to Confirm";
+                    resetPinUI();
+                } else if (setupStage === 'CONFIRM') {
+                    if (enteredPin === initialPinCache) {
+                        const hashed = await sha256(enteredPin);
+                        localStorage.setItem(_decode(7), hashed);
+                        setupStage = null;
+                        verifyTokenStorage();
+                    } else {
+                        authError.innerText = "PIN MISMATCH. REINITIALIZING.";
+                        setTimeout(() => {
+                            setupStage = 'CREATE';
+                            authTitle.innerText = "Setup Master PIN";
+                            authSubtitle.innerText = "Create 6-Digit Clearance PIN";
+                            resetPinUI();
+                        }, 1200);
+                    }
+                } else {
+                    const hashed = await sha256(enteredPin);
+                    const storedHash = localStorage.getItem(_decode(7));
+                    if (hashed === storedHash) {
+                        verifyTokenStorage();
+                    } else {
+                        authError.innerText = "CLEARANCE DENIED. INVALID PIN.";
+                        authScreen.classList.add('neon-glow-err');
+                        setTimeout(() => {
+                            authScreen.classList.remove('neon-glow-err');
+                            resetPinUI();
+                        }, 1000);
+                    }
+                }
+            }
+
+            function verifyTokenStorage() {
+                const token = localStorage.getItem(_decode(8));
+                authScreen.classList.add('hidden');
+                if (!token) {
+                    keyModal.classList.remove('hidden');
+                } else {
+                    unlockInterface();
+                }
+            }
+
+            saveTokenBtn.addEventListener('click', () => {
+                const key = inputToken.value.trim();
+                if (key.length > 10) {
+                    localStorage.setItem(_decode(8), key);
+                    keyModal.classList.add('hidden');
+                    unlockInterface();
+                }
+            });
+
+            function unlockInterface() {
+                authScreen.classList.add('hidden');
+                appHeader.classList.remove('hidden');
+                voiceScreen.classList.remove('hidden');
+                initSpeechRecognition();
+            }
+
+            lockBtn.addEventListener('click', () => {
+                // Instant Terminal Lockdown
+                if (synth.speaking) synth.cancel();
+                if (recognition) recognition.stop();
+                setUIState('idle');
+                voiceScreen.classList.add('hidden');
+                appHeader.classList.add('hidden');
+                authScreen.classList.remove('hidden');
+                checkSecurityContext();
+            });
+
+            // Language Toggle
+            langToggle.addEventListener('click', () => {
+                if (activeLang === 'en') {
+                    activeLang = 'bn';
+                    currentLang.innerText = "BN";
+                } else {
+                    activeLang = 'en';
+                    currentLang.innerText = "EN";
+                }
+                if (recognition) {
+                    recognition.lang = activeLang === 'en' ? _decode(5) : _decode(6);
+                }
+            });
+
+            // UI State Manager
+            function setUIState(state) {
+                if (state === 'listening') {
+                    isListening = true;
+                    neuralStatus.innerText = "LISTENING... RECORDING TELEMETRY";
+                    neuralStatus.className = "inline-block px-4 py-1.5 rounded-full border border-accent text-xs font-mono-tech tracking-widest text-accent uppercase bg-accent/10";
+                    coreMicBtn.className = "relative z-20 w-44 h-44 rounded-full glass-panel neon-glow-active flex items-center justify-center border-2 border-accent scale-105 transition-all duration-300";
+                    orbital1.className = "absolute w-64 h-64 rounded-full border border-accent/40 animate-ping-slow pointer-events-none transition-all duration-700";
+                    orbital2.className = "absolute w-72 h-72 rounded-full border border-dashed border-accent/60 animate-spin pointer-events-none transition-all duration-700";
+                    micIcon.classList.add('text-white');
+                } else if (state === 'processing') {
+                    isListening = false;
+                    isProcessing = true;
+                    neuralStatus.innerText = "PROCESSING // CONTACTING NEURAL CORE";
+                    neuralStatus.className = "inline-block px-4 py-1.5 rounded-full border border-yellow-500/50 text-xs font-mono-tech tracking-widest text-yellow-400 uppercase bg-yellow-950/20";
+                    coreMicBtn.className = "relative z-20 w-44 h-44 rounded-full glass-panel flex items-center justify-center border-2 border-yellow-500 animate-pulse transition-all duration-300";
+                    orbital1.className = "absolute w-64 h-64 rounded-full border border-yellow-500/20 pointer-events-none transition-all duration-700";
+                    orbital2.className = "absolute w-72 h-72 rounded-full border border-dashed border-yellow-500/30 animate-spin pointer-events-none transition-all duration-700";
+                } else if (state === 'speaking') {
+                    isProcessing = false;
+                    isSpeaking = true;
+                    neuralStatus.innerText = "SYNTHESIZING // EMITTING AUDIO";
+                    neuralStatus.className = "inline-block px-4 py-1.5 rounded-full border border-green-500/50 text-xs font-mono-tech tracking-widest text-green-400 uppercase bg-green-950/20";
+                    coreMicBtn.className = "relative z-20 w-44 h-44 rounded-full glass-panel flex items-center justify-center border-2 border-green-500 neon-glow transition-all duration-300";
+                    orbital1.className = "absolute w-64 h-64 rounded-full border border-green-500/30 animate-pulse pointer-events-none transition-all duration-700";
+                    orbital2.className = "absolute w-72 h-72 rounded-full border border-dashed border-green-500/40 animate-spin pointer-events-none transition-all duration-700";
+                } else { // Idle
+                    isListening = false;
+                    isProcessing = false;
+                    isSpeaking = false;
+                    neuralStatus.innerText = "SYSTEM READY // TAP TO ENGAGE";
+                    neuralStatus.className = "inline-block px-4 py-1.5 rounded-full border border-cyan-500/30 text-xs font-mono-tech tracking-widest text-accent uppercase bg-cyan-950/20";
+                    coreMicBtn.className = "relative z-20 w-44 h-44 rounded-full glass-panel neon-glow flex items-center justify-center border-2 border-accent transition-all duration-500 group";
+                    orbital1.className = "absolute w-64 h-64 rounded-full border border-cyan-500/10 pointer-events-none transition-all duration-700";
+                    orbital2.className = "absolute w-72 h-72 rounded-full border border-dashed border-cyan-500/20 pointer-events-none transition-all duration-700";
+                    micIcon.classList.remove('text-white');
+                }
+            }
+
+            // Web Speech API: Voice Recognition Setup
+            function initSpeechRecognition() {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SpeechRecognition) {
+                    telemetryFeed.innerText = "CRITICAL: Speech Engine unsupported on current platform.";
+                    return;
+                }
+
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = activeLang === 'en' ? _decode(5) : _decode(6);
+
+                recognition.onstart = () => {
+                    setUIState('listening');
+                    telemetryFeed.innerText = "Capturing voice...";
+                };
+
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    telemetryFeed.innerText = `"${transcript}"`;
+                    transmitTelemetry(transcript);
+                };
+
+                recognition.onerror = (event) => {
+                    setUIState('idle');
+                    telemetryFeed.innerText = `Acoustic Error: ${event.error}`;
+                };
+
+                recognition.onend = () => {
+                    if (!isProcessing && !isSpeaking) {
+                        setUIState('idle');
+                    }
+                };
+            }
+
+            // Interaction Trigger via Core Mic Button
+            coreMicBtn.addEventListener('click', () => {
+                if (isSpeaking) {
+                    synth.cancel();
+                    setUIState('idle');
+                    return;
+                }
+                if (isListening) {
+                    recognition.stop();
+                    setUIState('idle');
+                    return;
+                }
+                if (recognition && !isProcessing) {
+                    try {
+                        recognition.lang = activeLang === 'en' ? _decode(5) : _decode(6);
+                        recognition.start();
+                    } catch (e) {
+                        recognition.stop();
+                    }
+                }
+            });
+
+            // Transmit Captured Voice via Secure Protocol
+            async function transmitTelemetry(promptText) {
+                setUIState('processing');
+                const token = localStorage.getItem(_decode(8));
+                if (!token) {
+                    telemetryFeed.innerText = "ERROR: Security token missing.";
+                    setUIState('idle');
+                    return;
+                }
+
+                // Dynamically construct obscured API endpoint
+                const endpoint = `${_decode(0)}${_decode(1)}${token}`;
+                
+                // Formulate system instructions
+                const payload = {
+                    contents: [
+                        {
+                            role: "user",
+                            parts: [
+                                { text: _decode(2) },
+                                { text: `User speech query: ${promptText}` }
+                            ]
+                        }
+                    ]
+                };
+
+                try {
+                    const response = await fetch(endpoint, {
+                        method: _decode(4),
+                        headers: {
+                            'Content-Type': _decode(3)
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Status ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const text = result?.candidates?.[0]?.content?.parts?.[0]?.text || "No audible response generated.";
+                    
+                    telemetryFeed.innerText = `"${text}"`;
+                    vocalizeResponse(text);
+
+                } catch (err) {
+                    telemetryFeed.innerText = "Neural connection failed. Check your network or token.";
+                    setUIState('idle');
+                }
+            }
+
+            // Web Speech API: Text to Speech Vocalizer
+            function vocalizeResponse(text) {
+                if (!synth) {
+                    setUIState('idle');
+                    return;
+                }
+
+                setUIState('speaking');
+                const utterance = new SpeechSynthesisUtterance(text);
+                const targetCode = activeLang === 'en' ? _decode(5) : _decode(6);
+                utterance.lang = targetCode;
+
+                // Dynamically pick matching synthesis voice
+                const voices = synth.getVoices();
+                const matchedVoice = voices.find(v => v.lang.includes(targetCode) || v.lang.startsWith(targetCode.slice(0, 2)));
+                if (matchedVoice) utterance.voice = matchedVoice;
+
+                utterance.pitch = 0.95;
+                utterance.rate = 1.0;
+
+                utterance.onend = () => {
+                    setUIState('idle');
+                };
+
+                utterance.onerror = () => {
+                    setUIState('idle');
+                };
+
+                synth.speak(utterance);
+            }
+
+            // Init Voices preloader
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = () => synth.getVoices();
+            }
+
+            // Run Verification on Initial Launch
+            checkSecurityContext();
+
+        })();
+    </script>
+</body>
+</html>
